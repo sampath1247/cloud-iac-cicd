@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: A template as demenstration for proj 03, as an alternative solution to the process of demenstration for proj 02. This is for the backend, including lambda and API gateway endpoint.
+
+Parameters:
+  ExistingBucketName:
+    Type: String
+    Description: uco-cicc-media
+    Default: proj3-uco-cicc-media-group6
+
+Resources:
+  
+  # IAM Role for Lambda function
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Action: 'sts:AssumeRole'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+      Policies:
+        - PolicyName: LambdaPermissionsPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:GetObject'
+                Resource: !Sub 'arn:aws:s3:::${ExistingBucketName}/*'  # Reference the existing S3 bucket here
+              - Effect: 'Allow'
+                Action:
+                - 's3:PutObject'
+                Resource: !Sub 'arn:aws:s3:::${ExistingBucketName}/uploads/*'  # Allow writing objects to S3 (uploads folder)
+              - Effect: 'Allow'
+                Action:
+                  - 'textract:DetectDocumentText'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 'rekognition:DetectFaces'
+                  - 'rekognition:CompareFaces'
+                Resource: '*'
+              - Effect: 'Allow'
+                Action:
+                  - 'dynamodb:PutItem'
+                  - 'dynamodb:GetItem'
+                  - 'dynamodb:UpdateItem'
+                  - 'dynamodb:Query'
+                  - 'dynamodb:Scan'
+                Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/proj3_ImageProcessingTable'
+                Resource: '*'
+  
+
+  # DynamoDB Table
+  ParticipationTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: proj3_ImageProcessingTable
+      AttributeDefinitions:
+        - AttributeName: email
+          AttributeType: S
+        - AttributeName: classDate
+          AttributeType: S
+      KeySchema:
+        - AttributeName: email
+          KeyType: HASH
+        - AttributeName: classDate
+          KeyType: RANGE
+      BillingMode: PAY_PER_REQUEST
+
+  # Lambda Function for processing images (Extract Text & Recognize Faces)
+  ImageProcessingLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: proj3_ProcessImageFunction
+      Handler: "lambda_function.lambda_handler"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref ExistingBucketName
+        S3Key: proj3/proj3_lambda_function.zip  # The Lambda code uploaded to this S3 bucket
+      Runtime: python3.13
+      Timeout: 30 # Set timeout as needed (max 15 minutes for Lambda)
+
+  # API Gateway to trigger the Lambda function
+  ApiGateway:
+    Type: AWS::ApiGateway::RestApi
+    Properties:
+      Name: proj3_ImageProcessingApi
+      Description: API to trigger Lambda function for image processing
+      EndpointConfiguration:
+        Types:
+          - REGIONAL
+
+  # Resource and Method for API Gateway to invoke Lambda
+  ApiGatewayResource:
+    Type: AWS::ApiGateway::Resource
+    Properties:
+      RestApiId: !Ref ApiGateway
+      ParentId: !GetAtt ApiGateway.RootResourceId
+      PathPart: 'proj3_process-image'
+
+  ApiGatewayMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: POST
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGateway
+      Integration:
+        IntegrationHttpMethod: POST
+        Type: AWS_PROXY
+        Uri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ImageProcessingLambda.Arn}/invocations
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Origin: false
+
+  ApiGatewayOptionMethod:
+    Type: AWS::ApiGateway::Method
+    Properties:
+      AuthorizationType: NONE
+      HttpMethod: OPTIONS
+      ResourceId: !Ref ApiGatewayResource
+      RestApiId: !Ref ApiGateway
+      Integration:
+        Type: MOCK
+        IntegrationResponses:
+          - StatusCode: 200
+            ResponseParameters:
+              method.response.header.Access-Control-Allow-Headers: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+              method.response.header.Access-Control-Allow-Methods: "'OPTIONS,POST'"
+              method.response.header.Access-Control-Allow-Origin: "'*'"
+        RequestTemplates:
+          application/json: '{"statusCode": 200}'
+      MethodResponses:
+        - StatusCode: 200
+          ResponseParameters:
+            method.response.header.Access-Control-Allow-Headers: false
+            method.response.header.Access-Control-Allow-Methods: false
+            method.response.header.Access-Control-Allow-Origin: false
+
+
+  # Lambda Permission to allow API Gateway to invoke Lambda function
+  ApiGatewayLambdaInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref ImageProcessingLambda
+      Principal: 'apigateway.amazonaws.com'
+      
+  # Deployment of the API to a specific stage
+  ApiGatewayDeployment:
+    Type: AWS::ApiGateway::Deployment
+    DependsOn: ApiGatewayMethod  # Ensure the method is created before the deployment
+    Properties:
+      RestApiId: !Ref ApiGateway
+      StageName: dev  # You can change this to any stage name you want (e.g., dev, prod)
+
+
+Outputs:
+  APIUrl:
+    Description: "API Gateway URL"
+    Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/dev/proj3_process-image"
+

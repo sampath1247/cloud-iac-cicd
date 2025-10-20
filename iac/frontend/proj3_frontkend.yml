@@ -1,0 +1,190 @@
+AWSTemplateFormatVersion: '2010-09-09'
+
+Description: A template as demenstration for proj 03, as an alternative solution to the process of demenstration for proj 02. This is for the frontend, to deploy the web app through Amplify.
+
+# Parameters:
+  # ExistingBucketName:
+    # Type: String
+    # Description: uco-cicc-media
+  
+  # ApiGatewayID:
+    # Type: String
+    # Description: 1r4peknsej
+    
+Parameters:
+  S3BucketWithCode:
+    Type: String
+    Description: Name of the S3 bucket containing your source code
+    Default: proj3-uco-cicc-media-group6
+  
+  # S3SourceKey:
+    # Type: String
+    # Description: Key/path of the zip file in your S3 bucket
+    # Default: proj3/index.zip
+  
+  AppName:
+    Type: String
+    Description: Name of your Amplify application
+    Default: AmplifyIaC
+
+Resources:
+  # IAM Role for Amplify to Access S3 Code Bucket
+  AmplifyS3AccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Action: "sts:AssumeRole"
+            Principal:
+              Service: "amplify.amazonaws.com"
+      Policies:
+        - PolicyName: proj3_cicc-AmplifyS3AccessPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "s3:GetObject"
+                Resource: !Sub "arn:aws:s3:::${S3BucketWithCode}/*" # Grant permission to your S3 bucket
+
+  # Amplify Web App Hosting (Deployment from S3 Bucket)
+  # AmplifyApp:
+    # Type: AWS::Amplify::App
+    # Properties:
+      # Name: WebApp
+      # # using S3 as the source
+      # BuildSpec: |
+        # version: 1.0
+        # frontend:
+          # phases:
+            # preBuild:
+              # commands:
+                # - echo "Pre-building"
+            # build:
+              # commands:
+                # - echo "Building"
+        # artifacts:
+          # baseDirectory: / # Path to your build output folder if necessary
+          # files:
+            # - '**/*'
+      # EnvironmentVariables:
+        # - Name: API_URL
+          # Value: !Sub "https://${ApiGateway}.execute-api.${AWS::Region}.amazonaws.com/dev/process-image"
+      # CustomRules:
+        # - Source: "/<*>"
+          # Target: "/index.html"
+          # Status: "200"
+      # Source: 
+        # BucketName: !Ref ExistingBucketName  # This should be your S3 bucket where your code is located
+        # Key: "proj3/index.zip"    # The key to the ZIP file in your S3 bucket
+      # AccessRole: !Ref AmplifyS3AccessRole # Reference the IAM Role you created for S3 access
+      
+      
+  # Amplify App
+  # AmplifyApp:
+    # Type: AWS::Amplify::App
+    # Properties:
+      # Name: !Ref AppName
+      # IAMServiceRole: !GetAtt AmplifyS3AccessRole.Arn
+      # BuildSpec: |-
+        # version: 1
+        # frontend:
+          # phases:
+            # build:
+              # commands: []
+          # artifacts:
+            # baseDirectory: /
+            # files:
+              # - '**/*'
+      # CustomRules:
+        # - Source: /<*>
+          # Target: /index.html
+          # Status: 200
+
+  # Amplify Branch
+  # AmplifyBranch:
+    # Type: AWS::Amplify::Branch
+    # Properties:
+      # AppId: !GetAtt AmplifyApp.AppId
+      # BranchName: dev
+      # EnableAutoBuild: true
+
+  # Amplify Deployment using S3 source
+  # AmplifyDeployment:
+    # Type: AWS::Amplify::Deployment
+    # DependsOn: AmplifyBranch
+    # Properties:
+      # AppId: !GetAtt AmplifyApp.AppId
+      # BranchName: !GetAtt AmplifyBranch.BranchName
+      # SourceBundle:
+        # S3Bucket: !Ref S3BucketWithCode
+        # S3Key: !Ref S3SourceKey
+        
+  # Amplify App to manage and deploy the website
+  AmplifyApp:
+    Type: 'AWS::Amplify::App'
+    Properties:
+      Name: !Ref AppName
+      Description: 'App for dynamic web deployment from S3 source code'
+      
+      
+  # AmplifyApp:
+    # Type: 'AWS::Amplify::App'
+    # Properties:
+      # Name: !Ref AppName
+      # Description: 'App for dynamic web deployment from S3 source code'
+      # Repository: ''  # Not using GitHub here because we are deploying from an S3 bucket
+      # AccessToken: ''  # Leave empty if not using GitHub, or provide access token for private repos
+      # BuildSpec: 
+        # version: 1.0
+        # frontend:
+          # phases:
+            # preBuild:
+              # commands:
+                # - echo 'Installing dependencies'
+            # build:
+              # commands:
+                # - echo 'Building the app'
+                # - unzip /tmp/webapp.zip -d /tmp/webapp  # Unzip the source code
+                # - cp -r /tmp/webapp/* /var/www/html/  # Copy files to appropriate location
+            # postBuild:
+              # commands:
+                # - echo 'Build completed successfully'
+        # artifacts:
+          # baseDirectory: /var/www/html  # Directory where the app will be served from
+          # files:
+            # - '**/*'  # All files in the build directory
+      # EnvironmentVariables:
+        # - Name: 'S3_BUCKET'
+          # Value: !Ref SourceCodeBucket
+        # - Name: 'S3_OBJECT_KEY'
+          # Value: !Ref SourceCodeObject
+
+  # Amplify Branch for the app deployment
+  AmplifyBranch:
+    Type: 'AWS::Amplify::Branch'
+    Properties:
+      AppId: !GetAtt AmplifyApp.AppId
+      BranchName: 'dev'  # Define the branch name where the code will be deployed
+      # Stage: 'EXPERIMENTAL'  # Stage for the app
+      # EnableAutoBuild: true  # Enable auto build when code changes
+      # EnvironmentVariables:
+        # - Name: 'S3_BUCKET'
+          # Value: !Ref S3BucketWithCode
+        # - Name: 'S3_OBJECT_KEY'
+          # Value: !Ref S3SourceKey
+
+Outputs:
+  AmplifyAppId:
+    Description: ID of the Amplify App
+    Value: !GetAtt AmplifyApp.AppId
+  
+  AmplifyURL:
+    Description: Default domain of the Amplify App
+    Value: !GetAtt AmplifyApp.DefaultDomain
+  
+  BranchURL:
+    Description: URL to access the branch deployment
+    Value: !Sub https://${AmplifyBranch.BranchName}.${AmplifyApp.DefaultDomain}
