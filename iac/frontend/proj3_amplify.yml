@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Deploy an Amplify app from a specific zip file in S3 using Lambda trigger'
+
+Parameters:
+  SourceCodeBucket:
+    Type: String
+    Description: uco-cicc-media
+    Default: proj3-uco-cicc-media-group6
+    
+Resources:
+  # S3 Bucket to store the amplify web zip file
+  # AmplifyCodeBucket:
+    # Type: 'AWS::S3::Bucket'
+    # Properties:
+      # BucketName: 'uco-cicc-proj'
+      
+  # IAM Role for Lambda function to interact with S3 and Amplify
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: 'Allow'
+            Principal:
+              Service: 'lambda.amazonaws.com'
+            Action: 'sts:AssumeRole'
+      Policies:
+        - PolicyName: 'LambdaS3AmplifyPolicy'
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: 'Allow'
+                Action:
+                  - 's3:GetObject'
+                  - 's3:GetObjectAcl'
+                  - 's3:PutObjectAcl'
+                  - 's3:PutObjectVersionAcl'
+                Resource: !Sub 'arn:aws:s3:::${SourceCodeBucket}/*'  
+              - Effect: 'Allow'
+                Action:
+                  - 'amplify:StartDeployment'
+                Resource: '*'
+
+  # Lambda function to trigger Amplify deployment
+  TriggerLambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      Handler: 'proj3_deployment_lambda.lambda_handler'
+      Role: !GetAtt LambdaExecutionRole.Arn
+      FunctionName: 'StartAmplifyDeployment'
+      Runtime: 'python3.13'
+      Code:
+        S3Bucket: !Ref SourceCodeBucket  # Replace with your actual S3 bucket where the Lambda code is stored
+        S3Key: 'proj3/proj3_deployment_lambda.zip'  # Path to the Lambda function code in S3
+      Timeout: 30
+      MemorySize: 128
+
+  # S3 Event Notification to trigger Lambda for a specific object (myapp.zip)
+  # S3EventNotification:
+    # Type: 'AWS::S3::Bucket'
+    # Properties:
+      # BucketName: !Ref AmplifyCodeBucket
+      # NotificationConfiguration:
+        # LambdaConfigurations:
+          # - Event: 's3:ObjectCreated:*'
+            # Filter:
+              # S3Key:
+                # Rules:
+                  # - Name: 'prefix'
+                    # Value: 'proj3/index.zip'  # Only trigger for this specific file
+            # Function: !GetAtt TriggerLambdaFunction.Arn
+            
+  # Custom Resource to add the event notification to the existing bucket
+  # S3EventNotificationCustomResource:
+    # Type: 'Custom::S3EventNotification'
+    # Properties:
+      # ServiceToken: !GetAtt S3EventNotificationLambda.Arn
+      # BucketName: !Ref SourceCodeBucket
+      # LambdaFunctionArn: !GetAtt TriggerLambdaFunction.Arn
+      # Prefix: 'proj3/index.zip'  # Only trigger for this specific file
+
+  # Lambda function for the custom resource that sets the S3 event notification
+  # S3EventNotificationLambda:
+    # Type: 'AWS::Lambda::Function'
+    # Properties:
+      # Handler: 'proj3_bucket_event.lambda_handler'
+      # Role: !GetAtt LambdaExecutionRole.Arn
+      # FunctionName: 'S3EventNotificationLambda'
+      # Runtime: 'python3.13'
+      # Code:
+        # S3Bucket: !Ref SourceCodeBucket  # Replace with your actual S3 bucket where the Lambda code is stored
+        # S3Key: 'proj3/proj3_bucket_event.zip'  # Path to the Lambda function code in S3
+      # Timeout: 30
+      # MemorySize: 128
+
+  # Grant the S3 bucket permission to invoke the Lambda function
+  # LambdaInvokePermission:
+    # Type: 'AWS::Lambda::Permission'
+    # Properties:
+      # Action: 'lambda:InvokeFunction'
+      # FunctionName: !Ref TriggerLambdaFunction
+      # Principal: 's3.amazonaws.com'
+      # SourceArn: !Sub 'arn:aws:s3:::${SourceCodeBucket}'
+
+Outputs:
+  BucketName:
+    Description: 'S3 Bucket Name for source code'
+    Value: !Ref SourceCodeBucket
+
+  LambdaFunction:
+    Description: 'Lambda Function ARN'
+    Value: !GetAtt TriggerLambdaFunction.Arn
