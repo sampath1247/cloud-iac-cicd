@@ -1,0 +1,38 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.iml
+.mvn/
+.settings/
+.project
+.classpath
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+env/
+
+# Node/web
+node_modules/
+dist/
+build/
+
+# OS/Editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs & temp
+logs/
+*.log
+tmp/
+*.zip
+
+# AWS local creds (do not commit)
+*.env
+
+# Large artifacts (prefer LFS/PDF)
+*.docx
