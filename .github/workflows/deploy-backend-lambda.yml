@@ -1,0 +1,40 @@
+name: Deploy Backend Lambda
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'iac/backend/**'
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Zip backend Lambda
+        run: |
+          cd iac/backend
+          zip -r ../proj3_lambda_function.zip lambda_function.py
+          ls -lh ../proj3_lambda_function.zip
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Upload to S3
+        run: |
+          aws s3 cp iac/proj3_lambda_function.zip s3://${{ secrets.S3_BUCKET }}/${{ secrets.S3_PREFIX }}proj3_lambda_function.zip
+      - name: Update Lambda code
+        run: |
+          aws lambda update-function-code \
+            --function-name ${{ secrets.BACKEND_LAMBDA_NAME }} \
+            --s3-bucket ${{ secrets.S3_BUCKET }} \
+            --s3-key ${{ secrets.S3_PREFIX }}proj3_lambda_function.zip
