@@ -1,0 +1,29 @@
+name: Upload Frontend Zip (triggers Amplify deploy)
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'frontend/index.html'
+
+jobs:
+  upload-zip:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install zip
+        run: sudo apt-get update && sudo apt-get install -y zip
+      - name: Create index.zip
+        run: |
+          cd frontend
+          zip -r ../index.zip index.html
+          ls -lh ../index.zip
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+      - name: Upload to S3 (triggers S3 event → Lambda → Amplify)
+        run: |
+          aws s3 cp index.zip s3://${{ secrets.S3_BUCKET }}/${{ secrets.S3_PREFIX }}index.zip
